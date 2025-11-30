@@ -81,7 +81,32 @@ if [ -f /etc/cups/cupsd.conf ]; then
         fi
     fi
     
-    echo "✅ CUPS настроен для доступа извне"
+    # Разрешаем доступ к админ-панели CUPS
+    if ! grep -A 5 "<Location /admin>" /etc/cups/cupsd.conf | grep -q "Allow From All"; then
+        # Заменяем секцию /admin используя awk
+        awk '
+            BEGIN { in_admin = 0; admin_done = 0 }
+            /<Location \/admin>/ && !admin_done {
+                in_admin = 1
+                print "<Location /admin>"
+                print "  Order allow,deny"
+                print "  Allow From All"
+                print "  AuthType Default"
+                print "  Require user @SYSTEM"
+                print "</Location>"
+                admin_done = 1
+                # Пропускаем старые строки секции /admin до </Location>
+                while (getline > 0 && !/<\/Location>/) {
+                    # Пропускаем
+                }
+                next
+            }
+            { print }
+        ' /etc/cups/cupsd.conf > /tmp/cupsd.conf.new
+        mv /tmp/cupsd.conf.new /etc/cups/cupsd.conf
+    fi
+    
+    echo "✅ CUPS настроен для доступа извне (включая админ-панель)"
 fi
 
 systemctl enable cups

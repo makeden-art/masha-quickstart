@@ -49,16 +49,34 @@ else
 fi
 
 echo ""
-echo "🖨️  Шаг 3: Установка CUPS на хост..."
+echo "🖨️  Шаг 3: Установка и настройка CUPS на хост..."
 if ! command -v lpstat &> /dev/null; then
     apt install -y cups cups-client cups-browsed
-    systemctl enable cups
-    systemctl start cups
-    echo "✅ CUPS установлен и запущен на хосте"
+    echo "✅ CUPS установлен"
 else
     echo "✅ CUPS уже установлен"
-    systemctl start cups 2>/dev/null || true
 fi
+
+# Настройка CUPS для доступа извне
+if [ -f /etc/cups/cupsd.conf ]; then
+    # Делаем резервную копию
+    cp /etc/cups/cupsd.conf /etc/cups/cupsd.conf.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
+    
+    # Изменяем Listen на все интерфейсы
+    sed -i 's/^Listen localhost:631/Listen *:631/' /etc/cups/cupsd.conf
+    
+    # Разрешаем доступ извне в секции Location /
+    if ! grep -q "Allow From All" /etc/cups/cupsd.conf; then
+        sed -i '/<Location \/>/,/<\/Location>/ { /<Location \/>/a\  Order allow,deny\n  Allow From All' }' /etc/cups/cupsd.conf
+    fi
+    
+    echo "✅ CUPS настроен для доступа извне"
+fi
+
+systemctl enable cups
+systemctl restart cups 2>/dev/null || systemctl start cups
+sleep 2
+echo "✅ CUPS запущен на хосте"
 
 echo ""
 echo "📁 Шаг 4: Создание директорий..."

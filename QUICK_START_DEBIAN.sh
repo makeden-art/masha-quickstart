@@ -49,27 +49,38 @@ else
 fi
 
 echo ""
-echo "📁 Шаг 3: Создание директорий..."
+echo "🖨️  Шаг 3: Установка CUPS на хост..."
+if ! command -v lpstat &> /dev/null; then
+    apt install -y cups cups-client cups-browsed
+    systemctl enable cups
+    systemctl start cups
+    echo "✅ CUPS установлен и запущен на хосте"
+else
+    echo "✅ CUPS уже установлен"
+    systemctl start cups 2>/dev/null || true
+fi
+
+echo ""
+echo "📁 Шаг 4: Создание директорий..."
 mkdir -p $WORK_DIR/{config}
-mkdir -p $DATA_DIR/{uploads,print_queue,split_pdfs,cups,cups-spool}
+mkdir -p $DATA_DIR/{uploads,print_queue,split_pdfs,printed_archive}
 touch $WORK_DIR/license.lic
 chmod 644 $WORK_DIR/license.lic
 chmod -R 755 $WORK_DIR
 chmod -R 755 $DATA_DIR
+# Убеждаемся, что printed_archive существует и имеет правильные права
+chmod 755 $DATA_DIR/printed_archive
 echo "✅ Директории созданы"
 
 echo ""
-echo "📝 Шаг 4: Создание docker-compose.yml..."
+echo "📝 Шаг 5: Создание docker-compose.yml..."
 cat > $WORK_DIR/docker-compose.yml << EOF
 services:
   masha:
     image: ${DOCKER_USERNAME}/masha-client:latest
     container_name: masha-print
     restart: unless-stopped
-    privileged: true
-    ports:
-      - "8000:8000"
-      - "631:631"
+    network_mode: host
     volumes:
       - ./config:/app/config:rw
       # Статические файлы уже упакованы в образ
@@ -78,12 +89,12 @@ services:
       - ${DATA_DIR}/uploads:/app/uploads
       - ${DATA_DIR}/print_queue:/app/print_queue
       - ${DATA_DIR}/split_pdfs:/app/split_pdfs
-      - ${DATA_DIR}/cups:/etc/cups
-      - ${DATA_DIR}/cups-spool:/var/spool/cups
+      - ${DATA_DIR}/printed_archive:/app/printed_archive
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=Europe/Moscow
       - REDIS_AVAILABLE=false
+      - CUPS_SERVER=localhost
     healthcheck:
       test: ["CMD", "python3", "-c", "import requests; requests.get('http://localhost:8000/api/license/status', timeout=5)"]
       interval: 30s
@@ -94,24 +105,13 @@ EOF
 echo "✅ docker-compose.yml создан"
 
 echo ""
-echo "📥 Шаг 5: Загрузка образа Docker..."
+echo "📥 Шаг 6: Загрузка образа Docker..."
 if [ "$DOCKER_USERNAME" = "YOUR_DOCKERHUB_USERNAME" ]; then
     echo "⚠️  ВНИМАНИЕ: Замените YOUR_DOCKERHUB_USERNAME на ваш реальный логин!"
     echo "   Запустите: docker pull YOUR_DOCKERHUB_USERNAME/masha-client:latest"
 else
     docker pull "$IMAGE"
     echo "✅ Образ загружен"
-fi
-
-echo ""
-echo "🧩 Шаг 6: Подготовка конфигурации CUPS..."
-if [ "$DOCKER_USERNAME" != "YOUR_DOCKERHUB_USERNAME" ]; then
-    docker run --rm --entrypoint sh "$IMAGE" -c 'cd /etc && tar cf - cups' | tar -C "$DATA_DIR" --numeric-owner -xf -
-    docker run --rm --entrypoint sh "$IMAGE" -c 'cd /var && tar cf - spool/cups' | tar -C "$DATA_DIR" --numeric-owner -xf -
-    chmod -R 755 "$DATA_DIR/cups" "$DATA_DIR/cups-spool"
-    echo "✅ Конфигурация CUPS синхронизирована"
-else
-    echo "⚠️  Пропускаю (нет имени образа). После запуска скопируйте конфиги вручную."
 fi
 
 echo ""

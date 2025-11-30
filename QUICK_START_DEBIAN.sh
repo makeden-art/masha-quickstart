@@ -67,19 +67,18 @@ if [ -f /etc/cups/cupsd.conf ]; then
     
     # Разрешаем доступ извне в секции Location /
     if ! grep -q "Allow From All" /etc/cups/cupsd.conf; then
-        python3 << 'PYEOF'
-import re
-with open('/etc/cups/cupsd.conf', 'r') as f:
-    content = f.read()
-pattern = r'<Location />.*?</Location>'
-replacement = '''<Location />
-  Order allow,deny
+        # Простая замена через sed - добавляем Allow From All после Order allow,deny
+        sed -i '/<Location \/>/,/<\/Location>/ {
+            /Order allow,deny/a\
   Allow From All
-</Location>'''
-new_content = re.sub(pattern, replacement, content, flags=re.DOTALL)
-with open('/etc/cups/cupsd.conf', 'w') as f:
-    f.write(new_content)
-PYEOF
+        }' /etc/cups/cupsd.conf
+        
+        # Если Order allow,deny нет, добавляем обе строки после <Location />
+        if ! grep -q "Order allow,deny" /etc/cups/cupsd.conf; then
+            sed -i '/<Location \/>/a\
+  Order allow,deny\
+  Allow From All' /etc/cups/cupsd.conf
+        fi
     fi
     
     echo "✅ CUPS настроен для доступа извне"

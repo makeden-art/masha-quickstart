@@ -67,7 +67,19 @@ if [ -f /etc/cups/cupsd.conf ]; then
     
     # Разрешаем доступ извне в секции Location /
     if ! grep -q "Allow From All" /etc/cups/cupsd.conf; then
-        sed -i '/<Location \/>/,/<\/Location>/ { /<Location \/>/a\  Order allow,deny\n  Allow From All' }' /etc/cups/cupsd.conf
+        python3 << 'PYEOF'
+import re
+with open('/etc/cups/cupsd.conf', 'r') as f:
+    content = f.read()
+pattern = r'<Location />.*?</Location>'
+replacement = '''<Location />
+  Order allow,deny
+  Allow From All
+</Location>'''
+new_content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+with open('/etc/cups/cupsd.conf', 'w') as f:
+    f.write(new_content)
+PYEOF
     fi
     
     echo "✅ CUPS настроен для доступа извне"
@@ -147,9 +159,10 @@ if docker ps | grep -q masha-print; then
     echo "✅ Контейнер запущен!"
     echo ""
     echo "🌐 Доступные интерфейсы:"
-    echo "   📡 CUPS Web:     http://$(hostname -I | awk '{print $1}'):631"
-    echo "   🖨️  Маша Web:     http://$(hostname -I | awk '{print $1}'):8000"
-    echo "   📊 API Status:   http://$(hostname -I | awk '{print $1}'):8000/api/license/status"
+    HOST_IP=$(hostname -I | awk '{print $1}')
+    echo "   📡 CUPS Web:     http://${HOST_IP}:631"
+    echo "   🖨️  Маша Web:     http://${HOST_IP}:8000"
+    echo "   📊 API Status:   http://${HOST_IP}:8000/api/license/status"
     echo ""
     echo "📋 Полезные команды:"
     echo "   Логи:           docker logs -f masha-print"
